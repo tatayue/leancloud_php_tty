@@ -1,0 +1,6 @@
+.avoscloud
+.leancloud
+.DS_Store
+# VIM
+*~
+*.swp
