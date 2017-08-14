@@ -97,10 +97,10 @@ $app->post("/verifyOrder", function(Request $request, Response $response) {
 
     $out_trade_no = $_POST['out_trade_no'];
     $trade_status = $_POST['trade_status'];
-    error_log('out_trade_no '.$out_trade_no);
+    //error_log('out_trade_no '.$out_trade_no);
     error_log('trade_status '.$trade_status);
-    error_log('seller_id '.$_POST['seller_id']);
-    error_log('app_id '.$_POST['app_id']);
+    //error_log('seller_id '.$_POST['seller_id']);
+    //error_log('app_id '.$_POST['app_id']);
 
     if($flag) {
         //1、商户需要验证该通知数据中的out_trade_no是否为商户系统中创建的订单号，
