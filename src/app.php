@@ -81,16 +81,25 @@ $app->get('/hello/{name}', function (Request $request, Response $response) {
 });
 */
 $app->post("/verifyOrder", function(Request $request, Response $response) {
+    $appId = getenv('ALIPAY_appId');
+    $alipayrsaPublicKey = getenv('ALIPAY_serverPublicKey');
+    if (empty($appId)||empty($alipayrsaPublicKey)) {
+        $response->getBody()->write("failure");
+        return $response;
+    }
+
     $aop = new AopClient;
-    $aop->alipayrsaPublicKey = 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnuE6yS6NGUJq7994smQ5NKtgnpHCiso0CUjrB9fGjkhnlpopKTgGYPSEzo+EsonnOIW8hO8khfcjp3Eru28Jfo/UY0KUk5F1mUQ4llvFu3biSJPLrBYp/EsHlr8oIr6tRGzJZIAEhaBqJ5akptAsXkPk9GfftrHpVjpKf8SfuZhmEb8qgqLjC3XsyVLU33OdIP3CfoxvFfdNXVWCH9Ajt81HpNg2MvAhOrcErVUOr4H0P3r487JMRhHveKbybe8pm0VbUEZ5Rd+gVIqmvDAhVvcgdMMNiFoNXTs0Hk9HiZu9nnTN6mAxKf+qHDbNC+r/YKysj5B5T35TBkRSGg2slQIDAQAB';
+    $aop->alipayrsaPublicKey = $alipayrsaPublicKey;
     $flag = $aop->rsaCheckV1($_POST, NULL, "RSA2");
 
     //1、商户需要验证该通知数据中的out_trade_no是否为商户系统中创建的订单号，
     //2、判断total_amount是否确实为该订单的实际金额（即商户订单创建时的金额），
     //3、校验通知中的seller_id（或者seller_email) 是否为out_trade_no这笔单据的对应的操作方（有的时候，一个商户可能有多个seller_id/seller_email），
     //4、验证app_id是否为该商户本身。
-    error_log('out_trade_no'.$_POST["out_trade_no"]);
-    error_log('total_amount'.$_POST["total_amount"]);
+    error_log('out_trade_no '.$_POST["out_trade_no"]);
+    error_log('total_amount '.$_POST["total_amount"]);
+    error_log('seller_id '.$_POST["seller_id"]);
+    error_log('app_id '.$_POST["app_id"]);
 
     if($flag) {
         //$response->getBody()->write("success");
@@ -107,11 +116,8 @@ $app->post("/verifyOrder", function(Request $request, Response $response) {
                 $config->set("validUntil", $date);
                 $config->save();
                 error_log("OYEYE");
-                $response->getBody()->write("success");
             }
-            else {
-                $response->getBody()->write("success");
-            }
+            //$response->getBody()->write("success");
         }
         catch(CloudException $ex) {
             $response->getBody()->write("failure");
@@ -125,7 +131,7 @@ $app->post("/verifyOrder", function(Request $request, Response $response) {
 });
 
 
-
+/*
 $app->get('/generateOrder', function (Request $request, Response $response) {
     $params = $request->getQueryParams();
     $userId = $params["userId"];
@@ -210,11 +216,11 @@ $app->get('/generateOrder', function (Request $request, Response $response) {
     $aop = new AopClient;
     $aop->gatewayUrl = "https://openapi.alipay.com/gateway.do";
     $aop->appId = "2017070107616733";
-    $aop->rsaPrivateKey = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCYztLQ+SMTsnZt+7IhohIdTGq2mqOiTJv/+L26AYMnYQjheVIljydjWqHiMMb1eQZ7Kdg48mL2NwtMROYDa1SYJwC+oeG+9BVp8/mH1jGwV1weAn/Wu7yu8xUvxcoS5LF3w1Lej6uUWQBG8vkEuilzJG3UYP1nGj3TBRPKydjV0CK/2IPee7e9xl0og7978Bv2FVIOd5hyrenVCU2qIVLCQdgAr7+ZlNQImOAIl1M9v79zDw/WoPb0FxFWEMGVmO+K9KSq/fgq0rU3iyuH54cMIHbR1v0uBaK2dzbDNni6OtIEZ8DOk+Eh4GqsLImHLgWuC3xK10amJjX5B98y72zfAgMBAAECggEAJL3mNtUQuBW7ICra4/diP6U2K333RnkBMYUPqX/fl0JfrkdLlzhakisirY5o6HEXO9oN4XN2lBkcIFSYsc3G42bNaQjnjNCHrZg6MY0xGWOIBLc5Idq2PaK5P2lhczWF7nQKovUMnnjf9i9J7PcOLF9gASbpBzdqEikwXxw1hQNNg0HYhdttSlluNGmhFQy6l4cz4RXeAEAsqbc7JQZfKpv8ux/BWQR8nnb8GoH/pZjV2C8SrPDkAnSnhBYEqhrQua0WvMd2/qyt1R1fmssMWpIb2+rqlt/iHbHI/MLQOqctyDL+LOAsp+B2jmKPFsgxElpKNxyJAg43mJaiJWxuUQKBgQDOn0Qr01wdzQ/1OUzqezFEd57P/MtbSfqE5pPU2NbQ8239kDaym1HYKQpaKgXQK4DGjtvFHN4zCE+itxuoe8p0Z6fYBysUiON3vxtuTotItKsfmfu7y+8nVWxaAqpsqxU2vOoeuwFoYzwvEpQbITrhGZWVlvh+/DicLJpqswhonQKBgQC9U08btjEQJdMFni7pjxfwaSbhltOqdVANmKaVw2R/QfVc14ccpDsHhbEd+FUboAfgNr8GCdv2lfVXzMckmcx8TLJ1Vm0IP4X1qvDp1QQj/0008HXPFOm5o7dpyeAWG5F4lqjn1nM49pLXxcQCw8v16dNvTmt3RTefNiak8YP8qwKBgChyWujtVgHra21Iizr3ZJyPggIa7T/wil7LuDKZQ+vhSy2wtlRePTZASmt+AGdQrMOxoWnDjeeVf+lNSNfBa88/n0aVmKRLa6O8QEVmkLNp0nm8LeAEOsuLWEuCbBQbpWpyrq3XU544lsZsL5vj9F+uH28J/5j0DKzduliatVGtAoGAG6Mwtivnh6Lt5jEMSh4QcZD4ExBwf762W/W/w7cNUaJwTghMefrjfxqeG3DoA6td2vZC9n+z85A6i4GiRI6LEk4j8wsVyZF0XcOBfbER9KtNOwArQnqcD/R9Tt0gcDnAB6l+qLFeip88GnGNRpYMjS6AJgx9laCuGPjPtV5oVRcCgYEAsorpGBvKEWxcOAowYQ3dAQi5ZhofSdHH4xEqhH0fH7IEaLLZ217n1hog6dWPYtES0L5Qo6nkQR/z/Qu6f4IZdkINFj0EG9I5XrZi/2d/4w4CG64WNilU0EQat3fnb+HK06KCnuxLTc0Pve7ZYJOMWjjZB39K7EX1z+c+XLHQvqI=';
+    $aop->rsaPrivateKey = '';
     $aop->format = "json";
     $aop->charset = "UTF-8";
     $aop->signType = "RSA2";
-    $aop->alipayrsaPublicKey = 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnuE6yS6NGUJq7994smQ5NKtgnpHCiso0CUjrB9fGjkhnlpopKTgGYPSEzo+EsonnOIW8hO8khfcjp3Eru28Jfo/UY0KUk5F1mUQ4llvFu3biSJPLrBYp/EsHlr8oIr6tRGzJZIAEhaBqJ5akptAsXkPk9GfftrHpVjpKf8SfuZhmEb8qgqLjC3XsyVLU33OdIP3CfoxvFfdNXVWCH9Ajt81HpNg2MvAhOrcErVUOr4H0P3r487JMRhHveKbybe8pm0VbUEZ5Rd+gVIqmvDAhVvcgdMMNiFoNXTs0Hk9HiZu9nnTN6mAxKf+qHDbNC+r/YKysj5B5T35TBkRSGg2slQIDAQAB';
+    $aop->alipayrsaPublicKey = '';
     //实例化具体API对应的request类,类名称和接口名称对应,当前调用接口名称：alipay.trade.app.pay
     $alipayrequest = new AlipayTradeAppPayRequest();
     //SDK已经封装掉了公共参数，这里只需要传入业务参数
@@ -242,6 +248,6 @@ $app->get('/generateOrder', function (Request $request, Response $response) {
 
     return $response;
 });
-
+*/
 $app->run();
 

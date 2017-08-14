@@ -4,6 +4,7 @@ use \LeanCloud\Engine\Cloud;
 use \LeanCloud\Query;
 use \LeanCloud\Object;
 use \LeanCloud\CloudException;
+use \LeanCloud\Engine\FunctionError;
 
 /*
  * Define cloud functions and hooks on LeanCloud
@@ -42,7 +43,171 @@ Cloud::define("sieveOfPrimes", function($params, $user) {
     }
     return $numbers;
 });
+
+
+Cloud::define("sayHello", function($params, $user) {
+    error_log('LEANCLOUD_APP_ID:'.getenv("LEANCLOUD_APP_ID"));
+    error_log('LEANCLOUD_APP_MASTER_KEY:'.getenv("LEANCLOUD_APP_MASTER_KEY"));
+    $client = new GuzzleHttp\Client(['headers' => [
+        'X-LC-Id' => getenv("LEANCLOUD_APP_ID"), 
+        'X-LC-Key' => getenv("LEANCLOUD_APP_MASTER_KEY").',master',
+        'Content-Type' => 'application/json']
+        ]);
+    $client->request('POST', 'https://api.leancloud.cn/1.1/rtm/messages', [
+        'json' => ['from_peer' => 'NoticeMessage',
+                    'to_peers' => ['5944a9d75c497d006bdb8f13'],
+                    'message' => ['_lctype' => 2,
+                                  '_lctext' => '给你的心情点了赞',
+                                  '_lcattrs' => ['type' => 2,
+                                                'typeTitle' => '您有一条通知',
+                                                'fromId' => '593ea352ac502e006c139972',
+                                                'sid' => '598a97bc8d6d810062340008',
+                                  ],
+                    ],
+                    'conv_id' => '5955040cac502e006077817b',
+                    'transient' => false
+        ]
+    ]);
+
+    //$code = $response->getStatusCode(); // 200
+    //$body = $response->getBody();
+    //error_log('code:'.$code);
+    //error_log('body:'.$body);
+    //'{"from_peer": "NoticeMessage", "to_peers":["593ea352ac502e006c139972"],"message": "{\"_lctype\":2,\"_lctext\":\"给你的心情点了赞\",\"_lcattrs\":{\"type\":2,\"typeTitle\":\"您有一条通知\",\"fromId\":\"5944a9d75c497d006bdb8f13\",\"sid\":\"598a97bc8d6d810062340008\"}}", "conv_id": "5955040cac502e006077817b", "transient": false}'
+
+    // model.send('NoticeMessage'
+            // ,'{\"_lctype\":2,\"_lctext\":\"给你的心情点了赞\",\"_lcattrs\":{\"type\":2,\"typeTitle\":\"您有一条通知\",\"fromId\":\"' + request.object.get('user').id +'\",\"sid\":\"' + request.object.get('status').id + '\"}}'
+            // , {"toClients":[status.get('creater').id]});
+
+    return 'Hello333';
+});
 */
+
+
+Cloud::define("generateOrder", function($params, $user) {
+    $type = intval($params["type"]);
+    $count = intval($params["count"]);
+    error_log($type);
+    error_log($count);
+
+    if (empty($user)) {
+        return array('code' => -5, 'message' => '用户未登录');
+    }
+
+    $userId = $user->getObjectId();
+    error_log($userId);
+
+    $appId = getenv('ALIPAY_appId');
+    $rsaPrivateKey = getenv('ALIPAY_userPrivateKey');
+    $alipayrsaPublicKey = getenv('ALIPAY_serverPublicKey');
+    $notifyUrl = getenv('ALIPAY_notifyUrl');
+
+    if (empty($appId)||empty($rsaPrivateKey)||empty($alipayrsaPublicKey)||empty($notifyUrl)) {
+        return array('code' => -6, 'message' => '支付参数配置错误');
+    }
+
+    if (empty($userId)||empty($type)||empty($count)) {
+        return array('code' => -1, 'message' => '传入参数错误');
+    }
+
+    if ($type < 1 || $type > 3) {
+        return array('code' => -2, 'message' => '参数类型错误');
+    }
+
+    $price;
+    $query = new Query("PriceConfig");
+    try {
+        $price = $query->first();
+    }
+    catch(CloudException $ex) {
+        return array('code' => -3, 'message' => '查询配置信息错误');
+    }
+    
+    $order = new Object("PayOrder");
+
+    $subject;
+    $body;
+    $unitPrice;
+    switch($type){
+        case 1:
+            $subject = "身份认证-订单号";
+            $body = "她他约身份认证";
+            $unitPrice = $price->get("idAuth");
+            break;
+        case 2:
+            $subject = "视频认证-订单号";
+            $body = "她他约视频认证";
+            $unitPrice = $price->get("videoAuth");
+            break;
+        case 3:
+            $subject = "商家订阅服务费*".$count."月-";
+            $body = "她他约商家订阅服务费";
+            $unitPrice = $price->get("businessService");
+            break;
+        default:
+            
+            break;
+    }
+    
+    $total = $unitPrice * $count;
+
+    $order->set("creater", Object::create("_User", $userId));
+    $order->set("type", $type);
+    $order->set("unitPrice", $unitPrice);
+    $order->set("count", $count);
+    $order->set("total", $total);
+    $order->set("orderStatus", 0);
+    try {
+        $order->save();
+    }
+    catch(CloudException $ex) {
+        return array('code' => -4, 'message' => '生成订单错误');
+    }
+
+    $out_trade_no = $order->getObjectId();
+    $subject .= $out_trade_no;
+
+    $total = "0.01";
+
+    $aop = new AopClient;
+    $aop->gatewayUrl = "https://openapi.alipay.com/gateway.do";
+    $aop->appId = $appId;
+    $aop->rsaPrivateKey = $rsaPrivateKey;
+    $aop->format = "json";
+    $aop->charset = "UTF-8";
+    $aop->signType = "RSA2";
+    $aop->alipayrsaPublicKey = $alipayrsaPublicKey;
+    //实例化具体API对应的request类,类名称和接口名称对应,当前调用接口名称：alipay.trade.app.pay
+    $alipayrequest = new AlipayTradeAppPayRequest();
+    //SDK已经封装掉了公共参数，这里只需要传入业务参数
+    $bizcontent = "{\"body\":\"$body\"," 
+                    . "\"subject\": \"$subject\","
+                    . "\"out_trade_no\": \"$out_trade_no\","
+                    . "\"timeout_express\": \"30m\"," 
+                    . "\"total_amount\": \"$total\","
+                    . "\"product_code\":\"QUICK_MSECURITY_PAY\""
+                    . "}";
+
+    error_log($bizcontent);
+
+    $alipayrequest->setNotifyUrl($notifyUrl);
+    $alipayrequest->setBizContent($bizcontent);
+    //这里和普通的接口调用不同，使用的是sdkExecute
+    $orderString = $aop->sdkExecute($alipayrequest);
+    //htmlspecialchars是为了输出到页面时防止被浏览器将关键参数html转义，实际打印到日志以及http传输不会有这个问题
+    //error_log(htmlspecialchars($orderString));//就是orderString 可以直接给客户端请求，无需再做处理。
+    //error_log($orderString);
+
+    $order->set("orderString", $orderString);
+    try {
+        $order->save();
+    }
+    catch(CloudException $ex) {
+        
+    }
+
+    return array('orderString'=>$orderString,'code'=>0);
+});
 
 Cloud::define('_messageReceived', function($params, $user) {
     $fromPeer = $params['fromPeer'];
@@ -50,10 +215,10 @@ Cloud::define('_messageReceived', function($params, $user) {
     $toPeers = $params['toPeers'];
     $content = $params['content'];
 
-    error_log('fromPeer'.$fromPeer);
-    error_log('convId'.$convId);
-    error_log('toPeers'.$toPeers);
-    error_log('content'.$content);
+    error_log('fromPeer:'.$fromPeer);
+    error_log('convId:'.$convId);
+    error_log('toPeers:'.$toPeers);
+    error_log('content:'.$content);
     
     $query = new Query('ConversationBlackList');
     $query->containedIn('createrId', $toPeers);
@@ -118,12 +283,30 @@ Cloud::define('checkActivityPush', function($params, $user) {
                     //var str ='{\"_lctype\":2,\"_lctext\":\"' + request.object.get('pushTitle') +'\",\"_lcattrs\":{\"type\":6,\"typeTitle\":\"' + request.object.get('pushTitle') +'\",\"fromId\":\"' + request.object.get('creater').id +'\",\"sid\":\"' + request.object.id + '\"}}';
                     //console.log('message:' + str);
 
-                    $query2 = new Query('_Conversation');
-                    $model = $query2->get('595cfbe361ff4b006476c77c');
-                    
                         // model.send('NoticeMessage'
                         //     ,'{\"_lctype\":2,\"_lctext\":\"' + push.get('pushTitle') +'\",\"_lcattrs\":{\"type\":6,\"typeTitle\":\"' + push.get('pushTitle') +'\",\"fromId\":\"' + push.get('userId') +'\",\"sid\":\"' + push.get('statusId') + '\"}}'
                         //     , {"toClients": arr});
+
+                    $client = new GuzzleHttp\Client(['headers' => [
+                        'X-LC-Id' => getenv("LEANCLOUD_APP_ID"), 
+                        'X-LC-Key' => getenv("LEANCLOUD_APP_MASTER_KEY").',master',
+                        'Content-Type' => 'application/json']
+                        ]);
+                    $client->request('POST', 'https://api.leancloud.cn/1.1/rtm/messages', [
+                        'json' => ['from_peer' => 'NoticeMessage',
+                                    'to_peers' => arr,
+                                    'message' => ['_lctype' => 2,
+                                                  '_lctext' => $push->get('pushTitle'),
+                                                  '_lcattrs' => ['type' => 6,
+                                                                'typeTitle' => $push->get('pushTitle'),
+                                                                'fromId' => $push->get('userId'),
+                                                                'sid' => $push->get('statusId')
+                                                  ],
+                                    ],
+                                    'conv_id' => '595cfbe361ff4b006476c77c',
+                                    'transient' => false
+                        ]
+                    ]);
                     
                     $push->set("state", 1);
                     $push->save();
@@ -137,8 +320,24 @@ Cloud::define('checkActivityPush', function($params, $user) {
                 }
             }
             else if($type == 2) {
-                $query2 = new Query('_Conversation');
-                $model = $query2->get('594f297da22b9d005918deaf');
+                $client = new GuzzleHttp\Client(['headers' => [
+                        'X-LC-Id' => getenv("LEANCLOUD_APP_ID"), 
+                        'X-LC-Key' => getenv("LEANCLOUD_APP_MASTER_KEY").',master',
+                        'Content-Type' => 'application/json']
+                        ]);
+                $client->request('POST', 'https://api.leancloud.cn/1.1/rtm/broadcast', [
+                    'json' => ['from_peer' => 'SystemMessage',
+                                'message' => ['_lctype' => 2,
+                                              '_lctext' => $push->get('pushTitle'),
+                                              '_lcattrs' => ['type' => 6,
+                                                            'typeTitle' => $push->get('pushTitle'),
+                                                            'sid' => $push->get('statusId')
+                                              ],
+                                ],
+                                'conv_id' => '594f297da22b9d005918deaf',
+                                'transient' => false
+                    ]
+                ]);
                 
                     // model.broadcast('SystemMessage','{\"_lctype\":2,\"_lctext\":\"' + push.get('pushTitle') +'\",\"_lcattrs\":{\"typeTitle\":\"' + push.get('pushTitle') +'\",\"sid\":\"' + push.get('statusId') + '\"}}');
                 
@@ -162,8 +361,25 @@ Cloud::beforeSave('ConversationBlackList', function($obj, $user) {
 });
 
 Cloud::afterSave('_Followee', function($obj, $user) {
-    $query = new Query('_Conversation');
-    $model = $query->get('5951c0bcac502e0060758c32');
+    $client = new GuzzleHttp\Client(['headers' => [
+        'X-LC-Id' => getenv("LEANCLOUD_APP_ID"), 
+        'X-LC-Key' => getenv("LEANCLOUD_APP_MASTER_KEY").',master',
+        'Content-Type' => 'application/json']
+        ]);
+    $client->request('POST', 'https://api.leancloud.cn/1.1/rtm/messages', [
+        'json' => ['from_peer' => 'NoticeMessage',
+                    'to_peers' => [$obj->get('followee')->getObjectId()],
+                    'message' => ['_lctype' => 2,
+                                  '_lctext' => '刚刚关注了你',
+                                  '_lcattrs' => ['type' => 1,
+                                                'typeTitle' => '您有一条通知',
+                                                'fromId' => $obj->get('user')->getObjectId()
+                                  ],
+                    ],
+                    'conv_id' => '5951c0bcac502e0060758c32',
+                    'transient' => false
+        ]
+    ]);
     
         // model.send('NoticeMessage'
         //     ,'{\"_lctype\":2,\"_lctext\":\"刚刚关注了你\",\"_lcattrs\":{\"type\":1,\"typeTitle\":\"您有一条通知\",\"fromId\":\"' + request.object.get('user').id +'\"}}'
@@ -186,9 +402,26 @@ Cloud::afterSave("UserStatusLikes", function($obj, $user) {
         return;
     }
 
-    $query2 = new Query('_Conversation');
-    $model = $query2->get('5955040cac502e006077817b');
-    
+    $client = new GuzzleHttp\Client(['headers' => [
+        'X-LC-Id' => getenv("LEANCLOUD_APP_ID"), 
+        'X-LC-Key' => getenv("LEANCLOUD_APP_MASTER_KEY").',master',
+        'Content-Type' => 'application/json']
+        ]);
+    $client->request('POST', 'https://api.leancloud.cn/1.1/rtm/messages', [
+        'json' => ['from_peer' => 'NoticeMessage',
+                    'to_peers' => [$status->get('creater')->getObjectId()],
+                    'message' => ['_lctype' => 2,
+                                  '_lctext' => '给你的心情点了赞',
+                                  '_lcattrs' => ['type' => 2,
+                                                'typeTitle' => '您有一条通知',
+                                                'fromId' => $obj->get('user')->getObjectId(),
+                                                'sid' => $status->getObjectId(),
+                                  ],
+                    ],
+                    'conv_id' => '5955040cac502e006077817b',
+                    'transient' => false
+        ]
+    ]);
             // model.send('NoticeMessage'
             // ,'{\"_lctype\":2,\"_lctext\":\"给你的心情点了赞\",\"_lcattrs\":{\"type\":2,\"typeTitle\":\"您有一条通知\",\"fromId\":\"' + request.object.get('user').id +'\",\"sid\":\"' + request.object.get('status').id + '\"}}'
             // , {"toClients":[status.get('creater').id]});
@@ -216,9 +449,26 @@ Cloud::afterSave('ForumPostsLikes', function($obj, $user) {
         return;
     }
 
-    $query2 = new Query('_Conversation');
-    $model = $query2->get('5955040cac502e006077817b');
-    
+    $client = new GuzzleHttp\Client(['headers' => [
+        'X-LC-Id' => getenv("LEANCLOUD_APP_ID"), 
+        'X-LC-Key' => getenv("LEANCLOUD_APP_MASTER_KEY").',master',
+        'Content-Type' => 'application/json']
+        ]);
+    $client->request('POST', 'https://api.leancloud.cn/1.1/rtm/messages', [
+        'json' => ['from_peer' => 'NoticeMessage',
+                    'to_peers' => [$post->get('creater')->getObjectId()],
+                    'message' => ['_lctype' => 2,
+                                  '_lctext' => '给你的帖子点了赞',
+                                  '_lcattrs' => ['type' => 3,
+                                                'typeTitle' => '您有一条通知',
+                                                'fromId' => $obj->get('user')->getObjectId(),
+                                                'pid' => $post->getObjectId(),
+                                  ],
+                    ],
+                    'conv_id' => '5955040cac502e006077817b',
+                    'transient' => false
+        ]
+    ]);
             // model.send('NoticeMessage'
             // ,'{\"_lctype\":2,\"_lctext\":\"给你的帖子点了赞\",\"_lcattrs\":{\"type\":3,\"typeTitle\":\"您有一条通知\",\"fromId\":\"' + request.object.get('user').id +'\",\"pid\":\"' + request.object.get('post').id + '\"}}'
             // , {"toClients":[post.get('creater').id]});
@@ -246,8 +496,27 @@ Cloud::afterSave('ForumComments', function($obj, $user) {
         return;
     }
 
-    $query2 = new Query('_Conversation');
-    $model = $query2->get('595503e58fd9c5005f250b01');
+    $client = new GuzzleHttp\Client(['headers' => [
+        'X-LC-Id' => getenv("LEANCLOUD_APP_ID"), 
+        'X-LC-Key' => getenv("LEANCLOUD_APP_MASTER_KEY").',master',
+        'Content-Type' => 'application/json']
+        ]);
+    $client->request('POST', 'https://api.leancloud.cn/1.1/rtm/messages', [
+        'json' => ['from_peer' => 'NoticeMessage',
+                    'to_peers' => [$post->get('creater')->getObjectId()],
+                    'message' => ['_lctype' => 2,
+                                  '_lctext' => '刚刚评论了你的帖子',
+                                  '_lcattrs' => ['type' => 4,
+                                                'typeTitle' => '您有一条通知',
+                                                'fromId' => $obj->get('creater')->getObjectId(),
+                                                'pid' => $post->getObjectId(),
+                                                'cid' => $obj->getObjectId(),
+                                  ],
+                    ],
+                    'conv_id' => '595503e58fd9c5005f250b01',
+                    'transient' => false
+        ]
+    ]);
     
         // model.send('NoticeMessage'
         // ,'{\"_lctype\":2,\"_lctext\":\"刚刚评论了你的帖子\",\"_lcattrs\":{\"type\":4,\"typeTitle\":\"您有一条通知\",\"fromId\":\"' + request.object.get('creater').id +'\",\"pid\":\"' + request.object.get('post').id +'\",\"cid\":\"' + request.object.id + '\"}}'
@@ -264,8 +533,28 @@ Cloud::afterSave('ForumCommentReplies', function($obj, $user) {
     error_log('add reply done.');
     if($obj->get('creater')->getObjectId() != $comment->get('creater')->getObjectId())
     {
-        $query2 = new Query('_Conversation');
-        $model = $query2->get('595503e58fd9c5005f250b01');
+
+        $client = new GuzzleHttp\Client(['headers' => [
+        'X-LC-Id' => getenv("LEANCLOUD_APP_ID"), 
+        'X-LC-Key' => getenv("LEANCLOUD_APP_MASTER_KEY").',master',
+        'Content-Type' => 'application/json']
+        ]);
+        $client->request('POST', 'https://api.leancloud.cn/1.1/rtm/messages', [
+            'json' => ['from_peer' => 'NoticeMessage',
+                        'to_peers' => [$comment->get('creater')->getObjectId()],
+                        'message' => ['_lctype' => 2,
+                                      '_lctext' => '刚刚回复了你的评论',
+                                      '_lcattrs' => ['type' => 5,
+                                                    'typeTitle' => '您有一条通知',
+                                                    'fromId' => $obj->get('creater')->getObjectId(),
+                                                    'pid' => $comment->get('post')->getObjectId(),
+                                                    'cid' => $comment->getObjectId(),
+                                      ],
+                        ],
+                        'conv_id' => '595503e58fd9c5005f250b01',
+                        'transient' => false
+            ]
+        ]);
         
         // model.send('NoticeMessage'
         //         ,'{\"_lctype\":2,\"_lctext\":\"刚刚回复了你的评论\",\"_lcattrs\":{\"type\":5,\"typeTitle\":\"您有一条通知\",\"fromId\":\"' + request.object.get('creater').id +'\",\"pid\":\"' + comment.get('post').id +'\",\"cid\":\"' + comment.id + '\"}}'
