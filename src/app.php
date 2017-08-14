@@ -81,10 +81,13 @@ $app->get('/hello/{name}', function (Request $request, Response $response) {
 });
 */
 $app->post("/verifyOrder", function(Request $request, Response $response) {
+    //error_log('verifyOrder call.');
     $appId = getenv('ALIPAY_appId');
+    $seller_id = getenv('ALIPAY_seller_id');
     $alipayrsaPublicKey = getenv('ALIPAY_serverPublicKey');
-    if (empty($appId)||empty($alipayrsaPublicKey)) {
-        $response->getBody()->write("failure");
+    if (empty($appId)||empty($alipayrsaPublicKey)||empty($seller_id)) {
+        error_log('verifyOrder:支付参数配置错误');
+        $response->getBody()->write('failure');
         return $response;
     }
 
@@ -92,41 +95,99 @@ $app->post("/verifyOrder", function(Request $request, Response $response) {
     $aop->alipayrsaPublicKey = $alipayrsaPublicKey;
     $flag = $aop->rsaCheckV1($_POST, NULL, "RSA2");
 
-    //1、商户需要验证该通知数据中的out_trade_no是否为商户系统中创建的订单号，
-    //2、判断total_amount是否确实为该订单的实际金额（即商户订单创建时的金额），
-    //3、校验通知中的seller_id（或者seller_email) 是否为out_trade_no这笔单据的对应的操作方（有的时候，一个商户可能有多个seller_id/seller_email），
-    //4、验证app_id是否为该商户本身。
-    error_log('out_trade_no '.$_POST["out_trade_no"]);
-    error_log('total_amount '.$_POST["total_amount"]);
-    error_log('seller_id '.$_POST["seller_id"]);
-    error_log('app_id '.$_POST["app_id"]);
+    $out_trade_no = $_POST['out_trade_no'];
+    $trade_status = $_POST['trade_status'];
+    error_log('out_trade_no '.$out_trade_no);
+    error_log('trade_status '.$trade_status);
+    error_log('seller_id '.$_POST['seller_id']);
+    error_log('app_id '.$_POST['app_id']);
 
     if($flag) {
-        //$response->getBody()->write("success");
+        //1、商户需要验证该通知数据中的out_trade_no是否为商户系统中创建的订单号，
+        //2、判断total_amount是否确实为该订单的实际金额（即商户订单创建时的金额），
+        //3、校验通知中的seller_id（或者seller_email) 是否为out_trade_no这笔单据的对应的操作方（有的时候，一个商户可能有多个seller_id/seller_email），
+        //4、验证app_id是否为该商户本身。
+        if ($seller_id != $_POST['seller_id']) {
+            error_log('seller_id is not equal');
+            $response->getBody()->write('failure');
+            return $response;
+        }
+        if ($appId != $_POST['app_id']) {
+            error_log('app_id is not equal');
+            $response->getBody()->write('failure');
+            return $response;
+        }
 
-        $query = new Query("PayOrder");
+        $query = new Query('PayOrder');
         try {
-            $order = $query->get($_POST["out_trade_no"]);
-            $total_amount = $_POST["total_amount"];
-            
-            if ($order->get("type") == 3) {
-                $query2 = new Query("BusinessConfig");
-                $config = $query2->get($order->get("creater")->getObjectId());
-                $date = new DateTime('2017-08-30');
-                $config->set("validUntil", $date);
-                $config->save();
-                error_log("OYEYE");
+            $order = $query->get($out_trade_no);
+
+            if ($trade_status == 'TRADE_SUCCESS' || $trade_status == 'TRADE_FINISHED') {
+                $total_amount = floatval($_POST['total_amount']);
+                $type = $order->get('type');
+                $orderStatus = $order->get('orderStatus');
+                $total = floatval($order->get('total'));
+
+                error_log('total_amount '.$total_amount);
+                error_log('total '.$total);
+                //测试时先屏蔽
+                /*
+                if ($total_amount != $total) {
+                    error_log('total_amount is not equal');
+                    $response->getBody()->write('failure');
+                    return $response;
+                }
+                */
+                if($orderStatus == 1) {
+                    //该订单已处理
+                    error_log('out_trade_no '.$out_trade_no.' is repeat.');
+                    $response->getBody()->write('success');
+                    return $response;
+                }
+
+                if ($type == 1) {
+                    error_log('user '.$order->get('creater')->getObjectId().' 身份认证支付成功.');
+                }
+                else if ($type == 2) {
+                    error_log('user '.$order->get('creater')->getObjectId().' 视频认证支付成功.');
+                }
+                else if ($type == 3) {
+                    //相应的延长商户的订阅服务时间
+                    $query2 = new Query('BusinessConfig');
+                    $query2->equalTo('userId', $order->get('creater')->getObjectId());
+                    $config = $query2->first();
+
+                    $month = $order->get('count');
+                    $until = $config->get('validUntil');
+
+                    $datetime = new \DateTime();
+                    if(!empty($until) && $until->getTimestamp() > $datetime->getTimestamp()) 
+                    {
+                        $datetime = $until;
+                    }
+
+                    $interval = new \DateInterval('P'.$month.'M');
+                    $datetime->add($interval);
+
+                    $config->set('validUntil', $datetime);
+                    $config->save();
+                    error_log('user '.$order->get('creater')->getObjectId().' 订阅服务支付成功.');
+                }
+                $order->set("orderStatus", 1);
+                $order->save();
+
+                $response->getBody()->write('success');
+                return $response;
             }
-            //$response->getBody()->write("success");
+
+            
         }
         catch(CloudException $ex) {
-            $response->getBody()->write("failure");
+            error_log('out_trade_no '.$out_trade_no.' is error or not find BusinessConfig/IdentityAuth/VideoAuth');
         }
     }
-    else {
-        $response->getBody()->write("failure");
-    }
 
+    $response->getBody()->write('failure');
     return $response;
 });
 

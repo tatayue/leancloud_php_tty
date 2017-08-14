@@ -81,37 +81,53 @@ Cloud::define("sayHello", function($params, $user) {
 
     return 'Hello333';
 });
+
+
+Cloud::define("sayHello", function($params, $user) {
+    $month = 2;
+    $until = new \DateTime('2017-07-30');
+
+    $datetime = new \DateTime();
+
+    if($until->getTimestamp() > $datetime->getTimestamp()) {
+        $datetime = $until;
+    }
+
+    $interval = new \DateInterval('P'.$month.'M');
+    $datetime->add($interval);
+    error_log($datetime->format('Y-m-d H:i:s'));
+    return 'Hello '.$datetime->format('Y-m-d H:i:s');
+});
 */
-
-
 Cloud::define("generateOrder", function($params, $user) {
     $type = intval($params["type"]);
     $count = intval($params["count"]);
-    error_log($type);
-    error_log($count);
+    //error_log($type);
+    //error_log($count);
 
     if (empty($user)) {
-        return array('code' => -5, 'message' => '用户未登录');
+        return array('errcode' => -5, 'message' => '用户未登录');
     }
 
     $userId = $user->getObjectId();
-    error_log($userId);
+    //error_log($userId);
 
     $appId = getenv('ALIPAY_appId');
     $rsaPrivateKey = getenv('ALIPAY_userPrivateKey');
     $alipayrsaPublicKey = getenv('ALIPAY_serverPublicKey');
     $notifyUrl = getenv('ALIPAY_notifyUrl');
+    $seller_id = getenv('ALIPAY_seller_id');
 
-    if (empty($appId)||empty($rsaPrivateKey)||empty($alipayrsaPublicKey)||empty($notifyUrl)) {
-        return array('code' => -6, 'message' => '支付参数配置错误');
+    if (empty($appId)||empty($rsaPrivateKey)||empty($alipayrsaPublicKey)||empty($notifyUrl)||empty($seller_id)) {
+        return array('errcode' => -6, 'message' => '支付参数配置错误');
     }
 
     if (empty($userId)||empty($type)||empty($count)) {
-        return array('code' => -1, 'message' => '传入参数错误');
+        return array('errcode' => -1, 'message' => '传入参数错误');
     }
 
     if ($type < 1 || $type > 3) {
-        return array('code' => -2, 'message' => '参数类型错误');
+        return array('errcode' => -2, 'message' => '参数类型错误');
     }
 
     $price;
@@ -120,7 +136,7 @@ Cloud::define("generateOrder", function($params, $user) {
         $price = $query->first();
     }
     catch(CloudException $ex) {
-        return array('code' => -3, 'message' => '查询配置信息错误');
+        return array('errcode' => -3, 'message' => '查询配置信息错误');
     }
     
     $order = new Object("PayOrder");
@@ -161,8 +177,29 @@ Cloud::define("generateOrder", function($params, $user) {
         $order->save();
     }
     catch(CloudException $ex) {
-        return array('code' => -4, 'message' => '生成订单错误');
+        return array('errcode' => -4, 'message' => '生成订单错误');
     }
+
+    try {
+        if ($type == 1) {
+            $query2 = new Query('IdentityAuth');
+            $query2->equalTo('creater', $order->get('creater'));
+            $model = $query2->first();
+            $model->set('orderId', $order->getObjectId());
+            $model->save();
+        }
+        else if ($type == 2) {
+            $query2 = new Query('VideoAuth');
+            $query2->equalTo('creater', $order->get('creater'));
+            $model = $query2->first();
+            $model->set('orderId', $order->getObjectId());
+            $model->save();
+        }
+    }
+    catch(CloudException $ex) {
+        return array('errcode' => -4, 'message' => '关联数据错误');
+    }
+    
 
     $out_trade_no = $order->getObjectId();
     $subject .= $out_trade_no;
@@ -206,7 +243,7 @@ Cloud::define("generateOrder", function($params, $user) {
         
     }
 
-    return array('orderString'=>$orderString,'code'=>0);
+    return array('orderString' => $orderString, 'errcode' => 0);
 });
 
 Cloud::define('_messageReceived', function($params, $user) {
@@ -215,10 +252,10 @@ Cloud::define('_messageReceived', function($params, $user) {
     $toPeers = $params['toPeers'];
     $content = $params['content'];
 
-    error_log('fromPeer:'.$fromPeer);
-    error_log('convId:'.$convId);
-    error_log('toPeers:'.$toPeers);
-    error_log('content:'.$content);
+    //error_log('fromPeer:'.$fromPeer);
+    //error_log('convId:'.$convId);
+    //error_log('toPeers:'.$toPeers);
+    //error_log('content:'.$content);
     
     $query = new Query('ConversationBlackList');
     $query->containedIn('createrId', $toPeers);
@@ -390,14 +427,14 @@ Cloud::afterSave('_Followee', function($obj, $user) {
     error_log('send followee message.');
 });
 
-Cloud::afterSave("UserStatusLikes", function($obj, $user) {
+Cloud::beforeSave("UserStatusLikes", function($obj, $user) {
     $query = new Query('UserStatus');
     $status = $query->get($obj->get('status')->getObjectId());
     $status->increment('praise');
     $status->save();
     error_log('like status done.');
 
-    if($obj->get('user')->getObjectId() != $status->get('creater')->getObjectId()) {
+    if($obj->get('user')->getObjectId() == $status->get('creater')->getObjectId()) {
         error_log('myself like.');
         return;
     }
@@ -429,7 +466,7 @@ Cloud::afterSave("UserStatusLikes", function($obj, $user) {
     error_log('send status message.');
 });
 
-Cloud::afterDelete('UserStatusLikes', function($obj, $user) {
+Cloud::beforeDelete('UserStatusLikes', function($obj, $user) {
     $query = new Query('UserStatus');
     $status = $query->get($obj->get('status')->getObjectId());
     $status->increment('praise', -1);
@@ -437,14 +474,14 @@ Cloud::afterDelete('UserStatusLikes', function($obj, $user) {
     error_log('cancel like status.');
 });
 
-Cloud::afterSave('ForumPostsLikes', function($obj, $user) {
+Cloud::beforeSave('ForumPostsLikes', function($obj, $user) {
     $query = new Query('ForumPosts');
     $post = $query->get($obj->get('post')->getObjectId());
     $post->increment('praise');
     $post->save();
     error_log('like post done.');
 
-    if($obj->get('user')->getObjectId() != $post->get('creater')->getObjectId()) {
+    if($obj->get('user')->getObjectId() == $post->get('creater')->getObjectId()) {
         error_log('myself like.');
         return;
     }
@@ -476,7 +513,7 @@ Cloud::afterSave('ForumPostsLikes', function($obj, $user) {
     error_log('send post message.');
 });
 
-Cloud::afterDelete('ForumPostsLikes', function($obj, $user) {
+Cloud::beforeDelete('ForumPostsLikes', function($obj, $user) {
     $query = new Query('ForumPosts');
     $post = $query->get($obj->get('post')->getObjectId());
     $post->increment('praise', -1);
@@ -484,14 +521,14 @@ Cloud::afterDelete('ForumPostsLikes', function($obj, $user) {
     error_log('cancel like post.');
 });
 
-Cloud::afterSave('ForumComments', function($obj, $user) {
+Cloud::beforeSave('ForumComments', function($obj, $user) {
     $query = new Query('ForumPosts');
     $post = $query->get($obj->get('post')->getObjectId());
     $post->increment('commentCount');
     $post->save();
     error_log('comment done.');
 
-    if($obj->get('creater')->getObjectId() != $post->get('creater')->getObjectId()) {
+    if($obj->get('creater')->getObjectId() == $post->get('creater')->getObjectId()) {
         error_log('myself comment.');
         return;
     }
@@ -528,7 +565,7 @@ Cloud::afterSave('ForumComments', function($obj, $user) {
 Cloud::afterSave('ForumCommentReplies', function($obj, $user) {
     $query = new Query('ForumComments');
     $comment = $query->get($obj->get('comment')->getObjectId());
-    $comment->add('replies', $obj);
+    $comment->addIn('replies', $obj);
     $comment->save();
     error_log('add reply done.');
     if($obj->get('creater')->getObjectId() != $comment->get('creater')->getObjectId())
@@ -581,7 +618,9 @@ Cloud::afterUpdate('BusinessApply', function($obj, $user) {
 });
 
 Cloud::onLogin(function($user) {
-    if (!$user->get('active')) {
+    // 如果正常执行，则用户将正常登录
+    $active = $user['active'];
+    if ($active == false) {
         // 如果是 error 回调，则用户无法登录（收到 142 响应）
         throw new FunctionError('该用户已被禁用', 142);
     }
