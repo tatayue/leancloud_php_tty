@@ -469,8 +469,24 @@ Cloud::beforeSave("UserStatusLikes", function($obj, $user) {
 Cloud::beforeDelete('UserStatusLikes', function($obj, $user) {
     $query = new Query('UserStatus');
     $status = $query->get($obj->get('status')->getObjectId());
+
+    if ($status->get('praise') < 0) {
+        $query3 = new Query('ForumPostsLikes');
+        $query3->equalTo('post', $obj->get('post'));
+        $status->set('praise', $query3->count());
+        $status->save();
+        error_log('status '.$obj->get('status')->getObjectId().' change like.');
+    }
     $status->increment('praise', -1);
-    $status->save();
+
+    $query2 = new Query('UserStatus');
+    $query2->greaterThan('praise', 0);
+
+    $option = new SaveOption();
+    $option->where = $query2;
+
+    $status->save($option);
+
     error_log('cancel like status.');
 });
 
@@ -516,8 +532,24 @@ Cloud::beforeSave('ForumPostsLikes', function($obj, $user) {
 Cloud::beforeDelete('ForumPostsLikes', function($obj, $user) {
     $query = new Query('ForumPosts');
     $post = $query->get($obj->get('post')->getObjectId());
+
+    if ($post->get('praise') < 0) {
+        $query3 = new Query('ForumPostsLikes');
+        $query3->equalTo('post', $obj->get('post'));
+        $post->set('praise', $query3->count());
+        $post->save();
+        error_log('post '.$obj->get('post')->getObjectId().' change like.');
+    }
     $post->increment('praise', -1);
-    $post->save();
+
+    $query2 = new Query('ForumPosts');
+    $query2->greaterThan('praise', 0);
+
+    $option = new SaveOption();
+    $option->where = $query2;
+
+    $post->save($option);
+    
     error_log('cancel like post.');
 });
 
