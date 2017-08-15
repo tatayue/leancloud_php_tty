@@ -617,6 +617,44 @@ Cloud::afterUpdate('BusinessApply', function($obj, $user) {
   }
 });
 
+Cloud::afterUpdate('IdentityAuth', function($obj, $user) {
+  if($obj->get('state') == 1) {
+    //当身份认证审核通过后，更新_User表字段
+    $creater = $obj->get('creater');
+    $creater->fetch();
+    $level = $creater->get('authLevel');
+    if($level == 2) {
+        $creater->set('authLevel', 3);
+        $creater->save();
+    error_log('user '.$creater->getObjectId().' set authLevel '.$creater->get('authLevel')); 
+    }
+    else if($level == 0) {
+        $creater->set('authLevel', 1);
+        $creater->save();
+    error_log('user '.$creater->getObjectId().' set authLevel '.$creater->get('authLevel')); 
+    }
+  }
+});
+
+Cloud::afterUpdate('VideoAuth', function($obj, $user) {
+  if($obj->get('state') == 1) {
+    //当视频认证审核通过后，更新_User表字段
+    $creater = $obj->get('creater');
+    $creater->fetch();
+    $level = $creater->get('authLevel');
+    if($level == 1) {
+        $creater->set('authLevel', 3);
+        $creater->save();
+    error_log('user '.$creater->getObjectId().' set authLevel '.$creater->get('authLevel')); 
+    }
+    else if($level == 0) {
+        $creater->set('authLevel', 2);
+        $creater->save();
+    error_log('user '.$creater->getObjectId().' set authLevel '.$creater->get('authLevel')); 
+    }
+  }
+});
+
 Cloud::onLogin(function($user) {
     // 如果正常执行，则用户将正常登录
     $active = $user['active'];
