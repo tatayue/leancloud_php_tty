@@ -3,6 +3,7 @@
 use \LeanCloud\Engine\Cloud;
 use \LeanCloud\Query;
 use \LeanCloud\Object;
+use \LeanCloud\SaveOption;
 use \LeanCloud\CloudException;
 use \LeanCloud\Engine\FunctionError;
 
