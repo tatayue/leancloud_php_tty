@@ -276,7 +276,7 @@ $app->get('/generateOrder', function (Request $request, Response $response) {
 
     $aop = new AopClient;
     $aop->gatewayUrl = "https://openapi.alipay.com/gateway.do";
-    $aop->appId = "2017070107616733";
+    $aop->appId = "";
     $aop->rsaPrivateKey = '';
     $aop->format = "json";
     $aop->charset = "UTF-8";
