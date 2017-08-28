@@ -437,6 +437,9 @@ Cloud::beforeSave("UserStatusLikes", function($obj, $user) {
 }
 
 Cloud::afterSave("UserStatusLikes", function($obj, $user) {
+    $query = new Query('UserStatus');
+    $status = $query->get($obj->get('status')->getObjectId());
+
     if($obj->get('user')->getObjectId() == $status->get('creater')->getObjectId()) {
         error_log('myself like.');
         return;
@@ -502,6 +505,9 @@ Cloud::beforeSave('ForumPostsLikes', function($obj, $user) {
 }
 
 Cloud::afterSave('ForumPostsLikes', function($obj, $user) {
+    $query = new Query('ForumPosts');
+    $post = $query->get($obj->get('post')->getObjectId());
+
     if($obj->get('user')->getObjectId() == $post->get('creater')->getObjectId()) {
         error_log('myself like.');
         return;
@@ -567,6 +573,9 @@ Cloud::beforeSave('ForumComments', function($obj, $user) {
 }
 
 Cloud::afterSave('ForumComments', function($obj, $user) {
+    $query = new Query('ForumPosts');
+    $post = $query->get($obj->get('post')->getObjectId());
+    
     if($obj->get('creater')->getObjectId() == $post->get('creater')->getObjectId()) {
         error_log('myself comment.');
         return;
