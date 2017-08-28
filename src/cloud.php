@@ -434,7 +434,7 @@ Cloud::beforeSave("UserStatusLikes", function($obj, $user) {
     $status->increment('praise');
     $status->save();
     error_log('like status done.');
-}
+});
 
 Cloud::afterSave("UserStatusLikes", function($obj, $user) {
     $query = new Query('UserStatus');
@@ -502,7 +502,7 @@ Cloud::beforeSave('ForumPostsLikes', function($obj, $user) {
     $post->increment('praise');
     $post->save();
     error_log('like post done.');
-}
+});
 
 Cloud::afterSave('ForumPostsLikes', function($obj, $user) {
     $query = new Query('ForumPosts');
@@ -570,7 +570,7 @@ Cloud::beforeSave('ForumComments', function($obj, $user) {
     $post->increment('commentCount');
     $post->save();
     error_log('comment done.');
-}
+});
 
 Cloud::afterSave('ForumComments', function($obj, $user) {
     $query = new Query('ForumPosts');
