@@ -205,7 +205,7 @@ Cloud::define("generateOrder", function($params, $user) {
     $out_trade_no = $order->getObjectId();
     $subject .= $out_trade_no;
 
-    $total = "0.01";
+    //$total = "0.01";//调试使用
 
     $aop = new AopClient;
     $aop->gatewayUrl = "https://openapi.alipay.com/gateway.do";
@@ -575,7 +575,7 @@ Cloud::beforeSave('ForumComments', function($obj, $user) {
 Cloud::afterSave('ForumComments', function($obj, $user) {
     $query = new Query('ForumPosts');
     $post = $query->get($obj->get('post')->getObjectId());
-    
+
     if($obj->get('creater')->getObjectId() == $post->get('creater')->getObjectId()) {
         error_log('myself comment.');
         return;

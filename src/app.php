@@ -131,13 +131,13 @@ $app->post("/verifyOrder", function(Request $request, Response $response) {
                 error_log('total_amount '.$total_amount);
                 error_log('total '.$total);
                 //测试时先屏蔽
-                /*
+                
                 if ($total_amount != $total) {
                     error_log('total_amount is not equal');
                     $response->getBody()->write('failure');
                     return $response;
                 }
-                */
+                
                 if($orderStatus == 1) {
                     //该订单已处理
                     error_log('out_trade_no '.$out_trade_no.' is repeat.');
