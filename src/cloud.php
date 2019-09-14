@@ -710,6 +710,11 @@ Cloud::onLogin(function($user) {
         // 如果是 error 回调，则用户无法登录（收到 142 响应）
         throw new FunctionError('该用户已被禁用', 142);
     }
+    $ver = $user['appVersion'];
+    if ($ver == '1.0') {
+        // 如果是 error 回调，则用户无法登录（收到 142 响应）
+        throw new FunctionError('APP客户端版本太老，请至官网渠道下载最新版本，网址:www.tatayue.com.cn', 142);
+    }
 });
 
 
